@@ -9,47 +9,68 @@
 
 library(shiny)
 library(tidyverse)
+library(janitor)
+library(DT)
 
-contest_table <- read.csv("raw-data/Count Reports for AC - Sheet1.csv", dec=".", header=TRUE)
+count_reports <- read_csv("raw-data/Count Reports for AC - Sheet1.csv")[-2,]
+contest_table <- read_csv("raw-data/contest_table.txt")
+
+count_reports <- count_reports %>% clean_names() %>% na.omit("Description") %>%
+  mutate(description = as.numeric(description)) %>%
+  mutate(precinct_name = description %% 100000)
+
+contest_table <- contest_table %>% clean_names() %>%
+  mutate(precinct_name = as.numeric(precinct_name)) %>%
+  mutate(total_votes = absentee_votes + early_votes + election_votes) %>%
+  mutate(vote_proportion = total_votes/ballots)
+
+full_results <- left_join(contest_table, count_reports, by = "precinct_name") %>%
+  filter(contest_title == "UNITED STATES REPRESENTATIVE 48th District") %>%
+  filter(ad != "NA")
+
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
   
-  selectInput("dataset", label = "Dataset", choices = ls("package:datasets")),
-  verbatimTextOutput("summary"),
-  tableOutput("table"),
-   
+  selectInput("lat_ad", label = "Assembly District", choices = full_results$ad),
+  selectInput("viet_c", label = "City", choices = full_results$city),
+  
    # Application title
    titlePanel("2018 Midterm Elections in California's 48 Congressional District"),
-   
-   # Sidebar with a slider input for number of bins 
-   sidebarLayout(
-      sidebarPanel(
-         sliderInput("bins",
-                     "Number of bins:",
-                     min = 1,
-                     max = 50,
-                     value = 30)
-      ),
       
       # Show a plot of the generated distribution
       mainPanel(
-         plotOutput("distPlot")
-      )
+         plotOutput("districtPlot"),
+         plotOutput("lat_districtPlot")
    )
 )
 
 # Define server logic required to draw a histogram
 server <- function(input, output) {
    
-   output$distPlot <- renderPlot({
-      # generate bins based on input$bins from ui.R
-      x    <- faithful[, 2] 
-      bins <- seq(min(x), max(x), length.out = input$bins + 1)
-      
-      # draw the histogram with the specified number of bins
-      hist(x, breaks = bins, col = 'darkgray', border = 'white')
+   
+   output$districtPlot <- renderPlot({
+     full_results %>% filter(city == input$viet_c,
+                             candidate_name == "HARLEY ROUDA") %>%
+     ggplot(aes(x = vote_proportion, y = alyssa_vietnamese_an, color = ad)) + geom_point() +
+       xlab("Vote Proportion") +
+       ylab("Vietnamese Voters") +
+       ggtitle("Proportion of Vote for Harley Rouda (D) \nin California's 48th Congressional District by Precinct",
+               subtitle = "Sorted by City, Measured Against Number of Vietnamese Voters")
+     
    })
+   
+   output$lat_districtPlot <- renderPlot({
+     full_results %>% filter(ad == input$lat_ad,
+                             candidate_name == "HARLEY ROUDA") %>%
+       ggplot(aes(x = vote_proportion, y = alyssa_latino_an, color = city)) + geom_point() +
+       xlab("Vote Proportion") +
+       ylab("Vietnamese Voters") +
+       ggtitle("Proportion of Latino Vote for Harley Rouda (D) \nin California's 48th Congressional District by Precinct",
+               subtitle = "Sorted by Assembly District, Measured Against Number of Latino Voters")
+     
+   })
+
 }
 
 # Run the application 
